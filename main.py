@@ -28,7 +28,7 @@ class MapWindow:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 24)
         self.search_text = ""
-        self.marker = None
+        self.lst_coords = {'pt=': []}
         self.latitude = 55.755864
         self.longitude = 37.617698
         self.zoom = 10
@@ -78,6 +78,7 @@ class MapWindow:
         pygame.quit()
 
     def search(self):
+        self.lst_coords['pt='] = []
         # Отправляем запрос для поиска объекта по API карт
         params = {
             "geocode": self.search_text,
@@ -95,6 +96,8 @@ class MapWindow:
                 result = data["response"]["GeoObjectCollection"]["featureMember"][0]
                 pos = result["GeoObject"]["Point"]["pos"]
                 self.longitude, self.latitude = map(float, pos.split())
+                self.lst_coords['pt='].append(
+                    (pos.split()[0] + ',', pos.split()[1] + ',', 'pm2rdl'))
                 # Позиционируем карту на центральную точку объекта
                 self.update_map()
 
@@ -156,9 +159,16 @@ class MapWindow:
     def img(self, path_img):
         return pygame.transform.scale(pygame.image.load(f'image/{path_img}'), (30, 30))
 
+    def addMetcyToMap(self):
+        res = ''
+        if self.lst_coords['pt=']:
+            res += '&pt=' + ''.join(list(map(''.join, self.lst_coords['pt='])))
+        return res
+
     def update_map(self):
         # Обновляем отображение карты
-        map_url = f"{STATIC_MAP_SERVER}?ll={self.longitude},{self.latitude}&z={self.zoom}&l={self.map_type}"
+        map_url = f"{STATIC_MAP_SERVER}?ll={self.longitude},{self.latitude}&z={self.zoom}&l={self.map_type}" + \
+                  f'{self.addMetcyToMap()}'
 
         response = requests.get(map_url)
         map_file = "map.png"
@@ -172,17 +182,7 @@ class MapWindow:
         self.screen.blit(self.img('scheme.png'), (880, 10))
         self.screen.blit(self.img('sat.png'), (920, 10))
         self.screen.blit(self.img('hubrid.png'), (960, 10))
-
-        # Сохраняем координаты центральной точки карты
-        center_x = WIDTH // 2
-        center_y = HEIGHT // 2
         os.remove(map_file)
-
-        # Пересчитываем координаты метки при изменении масштаба или перемещении карты
-        if self.marker:
-            x = int(center_x + (self.marker[0] - center_x) * (2 ** (17 - self.zoom)))
-            y = int(center_y + (self.marker[1] - center_y) * (2 ** (17 - self.zoom)))
-            self.marker = (x, y)
 
     def draw_search_input(self):
         input_rect = pygame.Rect(20, 20, 350, 32)
@@ -195,9 +195,6 @@ class MapWindow:
     def draw_map(self):
         if hasattr(self, 'map_surface'):
             self.screen.blit(self.map_surface, (0, 0))
-
-        if self.marker:
-            pygame.draw.circle(self.screen, RED, self.marker, 10)
 
     def get_coordinate_step(self):
         # Вычисляем шаг смещения координат в зависимости от масштаба

@@ -27,12 +27,17 @@ class MapWindow:
         self.screen = pygame.display.set_mode(SCREEN_SIZE)
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 24)
+        self.fine_print = pygame.font.Font(None, 20)
         self.search_text = ""
+        self.full_address = []
         self.lst_coords = {'pt=': []}
         self.latitude = 55.755864
         self.longitude = 37.617698
         self.zoom = 10
         self.map_type = "sat"
+        self.flag_mailing_address = False
+        self.value_mailing_address = ''
+        self.flag = False
 
     def run(self):
         running = True
@@ -62,13 +67,23 @@ class MapWindow:
                         self.search_text = self.search_text[:-1]
                     else:
                         self.search_text += event.unicode
+
                 if event.type == pygame.MOUSEBUTTONDOWN:
+                    # смена отображения типов карты
                     if 880 <= event.pos[0] <= 910 and 10 <= event.pos[1] <= 40:
                         self.map_type_scheme()
                     elif 920 <= event.pos[0] <= 950 and 10 <= event.pos[1] <= 40:
                         self.map_type_satellite()
                     elif 960 <= event.pos[0] <= 990 and 10 <= event.pos[1] <= 40:
                         self.map_type_hybrid()
+
+                    # сброс точки и адреса объекта
+                    elif 340 <= event.pos[0] <= 370 and 20 <= event.pos[1] <= 50:
+                        self.reset_coords()
+
+                    # отображение почтового адреса объекта
+                    elif 230 <= event.pos[0] <= 260 and 65 <= event.pos[1] <= 95:
+                        self.mailing_address()
 
             self.draw_map()
             self.draw_search_input()
@@ -78,6 +93,7 @@ class MapWindow:
         pygame.quit()
 
     def search(self):
+        self.full_address = []
         self.lst_coords['pt='] = []
         # Отправляем запрос для поиска объекта по API карт
         params = {
@@ -93,8 +109,17 @@ class MapWindow:
 
             if data["response"]["GeoObjectCollection"]["featureMember"]:
                 # Проверяем, есть ли результаты поиска
-                result = data["response"]["GeoObjectCollection"]["featureMember"][0]
-                pos = result["GeoObject"]["Point"]["pos"]
+                result = data["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]
+                self.full_address.append(f'{result["metaDataProperty"]["GeocoderMetaData"]["text"]}')
+
+                try:
+                    self.value_mailing_address = result["metaDataProperty"]["GeocoderMetaData"]['Address'][
+                        'postal_code']
+                    self.flag = True
+                except:
+                    self.flag = False
+
+                pos = result["Point"]["pos"]
                 self.longitude, self.latitude = map(float, pos.split())
                 self.lst_coords['pt='].append(
                     (pos.split()[0] + ',', pos.split()[1] + ',', 'pm2rdl'))
@@ -165,6 +190,22 @@ class MapWindow:
             res += '&pt=' + ''.join(list(map(''.join, self.lst_coords['pt='])))
         return res
 
+    def reset_coords(self):
+        self.lst_coords['pt='] = []
+        self.search_text = ''
+        self.full_address.clear()
+        self.update_map()
+
+    def mailing_address(self):
+        self.flag_mailing_address = not self.flag_mailing_address
+        if self.flag:
+            if self.flag_mailing_address:
+                self.full_address.append(', ' + self.value_mailing_address)
+            else:
+                self.full_address = self.full_address[:-1]
+        else:
+            pass
+
     def update_map(self):
         # Обновляем отображение карты
         map_url = f"{STATIC_MAP_SERVER}?ll={self.longitude},{self.latitude}&z={self.zoom}&l={self.map_type}" + \
@@ -189,6 +230,18 @@ class MapWindow:
         text_surface = self.font.render(self.search_text, True, (0, 0, 0))
         pygame.draw.rect(self.screen, WHITE, input_rect)
         self.screen.blit(text_surface, (input_rect.x + 5, input_rect.y + 9))
+        self.screen.blit(self.img('close.png'), (340, 20))
+
+        text = self.font.render('Полный адрес объекта:', True, (0, 0, 0))
+        self.screen.blit(text, (20, 70))
+
+        address = ' '.join(self.full_address)
+        text_full_address_b_50_sumbol = self.fine_print.render(address[:50], True, (0, 0, 0))
+        text_full_address_a_50_sumbol = self.fine_print.render(address[50:], True, (0, 0, 0))
+        self.screen.blit(text_full_address_b_50_sumbol, (20, 100))
+        self.screen.blit(text_full_address_a_50_sumbol, (20, 130))
+
+        self.screen.blit(self.img('mail_box.png'), (230, 65))
 
         input_rect.w = max(100, text_surface.get_width() + 10)
 
